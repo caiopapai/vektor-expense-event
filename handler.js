@@ -1,44 +1,58 @@
-const AWS = require('aws-sdk');
+"use strict";
+
+const AWS = require("aws-sdk");
+const { v4: uuidv4 } = require("uuid");
+
 const dynamo = new AWS.DynamoDB.DocumentClient();
+ 
+const table = process.env.VEKTOR_EXPENSE_TABLE;
 
-const normalizeEvent = require('./normalizer');
-const response = require('./response');
+module.exports.createExpenseEvent = async (event) => {
+  try {
+    
+    
+    console.log(event)
+    
+    const eventDate = new Date().toISOString().replace(/T/, ' ').replace(/\..+/, '');
 
-module.exports.handler = async event => {
-    if (process.env.DEBUG) {
-        console.log({
-            message: 'Received event',
-            data: JSON.stringify(event),
-        });
-    }
+    let eventBody = JSON.parse(event.body);
 
-    const table = process.env.TABLE;
-    if (!table) {
-        throw new Error('No table name defined.');
-    }
+    const { type, subtype, essential_expense,recurrent,recurrence,value } = eventBody;
 
-    const { data } = normalizeEvent(event);
-
-    const params = {
-        TableName: table,
-        Item: {
-            ...data,
-            created_at: new Date().toISOString(),
-        },
+    const expenseEvent = {
+      expense_uuid: uuidv4(),
+      event :"CreateExprense",
+      event_date: eventDate,
+      event_payload : {
+        type,
+        subtype,
+        essential_expense,
+        recurrent,
+        recurrence
+      },
+      value
     };
+    
+    console.log(expenseEvent)
 
-    try {
-        await dynamo.put(params).promise();
+    await dynamo
+      .put({
+        TableName: table,
+        Item: expenseEvent,
+      })
+      .promise();
 
-        console.log({
-            message: 'Record has been created',
-            data: JSON.stringify(params),
-        });
-
-        return response(201, `Record ${data.id} has been created`);
-    } catch (err) {
-        console.error(err);
-        return response(500, 'Somenthing went wrong');
-    }
+    return {
+      statusCode: 201,
+    };
+  } catch (err) {
+    console.log("Error", err);
+    return {
+      statusCode: err.statusCode ? err.statusCode : 500,
+      body: JSON.stringify({
+        error: err.name ? err.name : "Exception",
+        message: err.message ? err.message : "Unknown error",
+      }),
+    };
+  }
 };
-
